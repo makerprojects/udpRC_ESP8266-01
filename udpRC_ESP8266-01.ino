@@ -1,31 +1,57 @@
-// udpRC_ESP8266-01 Programm ("Firmware") für den ESP8266 (ESP-01)
-//
-// Das ESP8266-01 µC Board wird als Schnittstellenumsetzer zwischen dem wLAN und dem UART
-// des PiKoder/SSC verwendet. Hierzu wird die WLAN-Schnittstelle des Boardes als Access Point 
-// konfiguriert (default SSID: "PiKoder_wRX", default Password: "password"). 
-// In dieses WLAN bucht sich das Smartphone mit der App "udpRC" ein.
+/* 
+udpRC_ESP8266-01 Receiver (RX) firmware for ESP8266 (ESP-01)
 
-// Last change:
-// 26.12.16: Configuration data stored in EEProm, Commands for setting network parameters
-#define FwVersion "1.0"
+The ESP8266-01 SoC Board is applied as transparent interface between WLAN nd the PiKoder/SSC's UART.
+In this setup the ESP8266 would establish an access point (ap) with the follwowing default settings: 
+SSID: "PiKoder_wRX", Password: "password". Your Android(TM) smart device's app "udpRC" (available at the
+google play store) would connect to this ap as a client.   
+*/ 
 
-// Dieses Programm wird mit der Arduino IDE (Version > 1.6.8) kompiliert und an den µC übertragen
-// werden, wenn man hier unter Datei -> Voreinstellungen -> Additional Boards Manager URLs:
-// "http://arduino.esp8266.com/staging/package_esp8266com_index.json" eingibt.
-// Danach eingeben:
-// Werkzeuge -> Platine -> Boards Manager -> esp8266 installieren
-// Und dann einstellen:
-// Platine: "Generic ESP8266 module"
-// Flash Mode: "QIO"
-// Flash Frequency: "40MHz"
-// Upload Using: "Serial"
-// CPU Frequency: "80MHz"
-// Flash Size: "1M (64K SPIFFS)"
-// Upload Speed "115200"
-// Port: "COM40" (kann variieren)
-// Programmer: "Arduino Gemma"
-//
-// Weitere Informationen auf www.makerprojekte.de und www.pikoder.de.
+/* 
+Last change:
+08.01.17: Changed status message to destinct between RX und TX firmware, translated comments
+26.12.16: Configuration data stored in EEProm, Commands for setting network parameters
+*/ 
+#define FwVersion "1.1"
+
+/* 
+Copyright 2017 Gregor Schlechtriem
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+/* 
+This sketch requires Arduino IDE (Version > 1.6.8). The following settings are recommended:
+
+Add ESP board: 
+File -> Preferences -> Additional Boards Manager URLs:
+enter "http://arduino.esp8266.com/staging/package_esp8266com_index.json" 
+and then using:
+Tools -> Boards -> Boards Manager to install the esp8266
+
+Recommended board settings:
+Board: "Generic ESP8266 module"
+Flash Mode: "QIO"
+Flash Frequency: "40MHz"
+Upload Using: "Serial"
+CPU Frequency: "80MHz"
+Flash Size: "1M (64K SPIFFS)"
+Upload Speed "115200"
+Port: "COM40" (depends on your setup)
+Programmer: "Arduino Gemma"
+
+Please refer to www.makerprojects.de and www.pikoder.de for more information.
+*/ 
 
 #include <EEPROM.h>
 #include <ESP8266WiFi.h>
@@ -61,7 +87,7 @@ struct StoreStruct {
 
 int settingsRetrievedOk = false;
 
-unsigned int localPort = 12001; //Port zum Empfangen der Daten vom Smartphone
+unsigned int localPort = 12001; //local port for receiving data from smart device (client)
 unsigned int remotPort = 12000;
 
 IPAddress remoteIp;
@@ -142,7 +168,7 @@ void loop() {
         } else {
           Serial.println("(applied default values)");         
         }
-        Serial.print("Firmware: ");
+        Serial.print("RX version: ");
         Serial.println(FwVersion);
         Serial.print("SSID: ");
         Serial.println(settings.ssidap);
