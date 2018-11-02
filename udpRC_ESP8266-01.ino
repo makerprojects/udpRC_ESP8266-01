@@ -1,7 +1,7 @@
 /* 
 udpRC_ESP8266-01 Receiver (RX) firmware for ESP8266 (ESP-01)
 
-The ESP8266-01 SoC Board is applied as transparent interface between WLAN nd the PiKoder/SSC's UART.
+The ESP8266-01 SoC Board is applied as transparent interface between WLAN and the PiKoder/SSC's UART.
 In this setup the ESP8266 would establish an access point (ap) with the follwowing default settings: 
 SSID: "PiKoder_wRX", Password: "password". Your Android(TM) smart device's app "udpRC" (available at the
 google play store) would connect to this ap as a client.   
@@ -9,13 +9,14 @@ google play store) would connect to this ap as a client.
 
 /* 
 Last change:
+25.10.18: Implemented Baudrate setting and a few minor fixes; bumped version to 1.2.
 08.01.17: Changed status message to destinct between RX und TX firmware, translated comments
 26.12.16: Configuration data stored in EEProm, Commands for setting network parameters
 */ 
-#define FwVersion "1.1"
+#define FwVersion "1.2"
 
 /* 
-Copyright 2017 Gregor Schlechtriem
+Copyright 2017 - 2018 Gregor Schlechtriem
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -60,6 +61,7 @@ Please refer to www.makerprojects.de and www.pikoder.de for more information.
 // Your local default definitions
 #define YourSSID "PiKoder_wRX"
 #define YourPassPhrase "password"
+#define DefaultBaudrate 9600
 
 // ID of the settings block
 #define ConfigHeader "PwRX"
@@ -73,6 +75,7 @@ struct StoreStruct {
   char ssidap[32];
   int SettingsVersion; // consumes 4 Bytes
   char password[32];
+  long baudrate;
   // This is for mere detection if they are your settings
   char CHeader[8]; // it is the last variable of the struct
   // so when settings are saved, they will only be validated if
@@ -82,6 +85,7 @@ struct StoreStruct {
   YourSSID,
   ConfigVersion,
   YourPassPhrase,
+  DefaultBaudrate,
   ConfigHeader
 };
 
@@ -133,10 +137,10 @@ void saveConfig() {
 
 
 void setup() {
-  Serial.begin(9600); // setup connection to UART
-  delay(1000);
   EEPROM.begin(sizeof(settings));
   loadConfig(); 
+  Serial.begin(settings.baudrate); // setup connection to UART
+  delay(1000);
   WiFi.mode(WIFI_AP);
   WiFi.softAP(settings.ssidap,settings.password);
   WiFi.softAPConfig(targetip,targetip,subnet);
@@ -174,6 +178,8 @@ void loop() {
         Serial.println(settings.ssidap);
         Serial.print("Password: ");     
         Serial.println(settings.password);     
+        Serial.print("Baudrate: ");     
+        Serial.print(String(settings.baudrate,DEC));           
       } 
       if (nChar == 'S' || nChar == 's') { // set SSID
         int i=0;       
@@ -194,7 +200,7 @@ void loop() {
         saveConfig();
         Serial.println(" ... reset controller to apply new settings");  
       }
-      if (nChar == 'P' || nChar == 'p') { // set SSID
+      if (nChar == 'P' || nChar == 'p') { // set password
         int i=0;       
         while ((nChar != 0xD && nChar != 0xA)) {
           if (Serial.available() > 0) {
@@ -213,6 +219,37 @@ void loop() {
         saveConfig();
         Serial.println(" ... reset controller to apply new settings");  
       }
+      if (nChar == 'B' || nChar == 'b') { // set new baud rate
+        int i=0;
+        long newBaudrate = 0;       
+        while ((nChar != 0xD && nChar != 0xA)) {
+          if (Serial.available() > 0) {
+            nChar = Serial.read();
+            if ((!i) && (nChar == '=')) {
+            } else if (isDigit(nChar)) {
+              newBaudrate = newBaudrate * 10 + nChar - '0';        
+            } else if ((nChar != 0xD && nChar != 0xA)) {
+              Serial.println();
+              Serial.println();
+              Serial.println("Found non numerical input (" + String(nChar) + ") - please re-enter.");
+              newBaudrate = 0;
+              break;
+            }
+          }
+        }    
+        while ((nChar != 0xD && nChar != 0xA)) if (Serial.available() > 0) nChar = Serial.read(); 
+        if (newBaudrate > 0) {
+          Serial.println();
+          Serial.println();
+          Serial.print("Setting Baudrate");
+          Serial.println();
+          Serial.print("New Baudrate: ");
+          Serial.print(String(newBaudrate,DEC));           
+          settings.baudrate = newBaudrate;
+          saveConfig();
+          Serial.println(" ... reset controller to apply new settings");
+        }
+      }          
     } else {
       Udp.beginPacket(remoteIp, remotPort);
       Udp.write(nChar);
