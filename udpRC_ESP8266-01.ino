@@ -1,3 +1,4 @@
+
 /* 
 udpRC_ESP8266-01 Receiver (RX) firmware for ESP8266 (ESP-01)
 
@@ -9,14 +10,16 @@ google play store) would connect to this ap as a client.
 
 /* 
 Last change:
+15.08.20: Implemented backwards-compatible FW version retrieval
+25.12.19: Implemented Commit and restarting of ESP to execute change in SSID and password 
 25.10.18: Implemented Baudrate setting and a few minor fixes; bumped version to 1.2.
 08.01.17: Changed status message to destinct between RX und TX firmware, translated comments
 26.12.16: Configuration data stored in EEProm, Commands for setting network parameters
 */ 
-#define FwVersion "1.2"
+#define FwVersion "1.3"
 
 /* 
-Copyright 2017 - 2018 Gregor Schlechtriem
+Copyright 2017 - 2020 Gregor Schlechtriem
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -69,6 +72,8 @@ Please refer to www.makerprojects.de and www.pikoder.de for more information.
 
 // Settings structure
 #define CONFIG_START 0
+
+boolean debug = false;
 
 struct StoreStruct {
   // The variables of the settings
@@ -135,35 +140,76 @@ void saveConfig() {
   }
 }
 
-
 void setup() {
   EEPROM.begin(sizeof(settings));
   loadConfig(); 
   Serial.begin(settings.baudrate); // setup connection to UART
   delay(1000);
+  
+  // ap setup
   WiFi.mode(WIFI_AP);
   WiFi.softAP(settings.ssidap,settings.password);
   WiFi.softAPConfig(targetip,targetip,subnet);
-  myIP = WiFi.softAPIP(); 
+  myIP = WiFi.softAPIP();
+
+  // start udp 
   Udp.begin(localPort);
 }
 
 void loop() {
   int packetSize = Udp.parsePacket();
   if (packetSize) {
+    if (debug) {
+      Serial.println();
+      Serial.print("Start of package (size " + String(packetSize) + "): ");
+    }
     remoteIp = Udp.remoteIP();
     Udp.read(packetBuffer, 255);
-    for (int i=0; i< packetSize; i++) {
-      Serial.print(packetBuffer[i]) ;
-    } 
-  } 
+    if (packetBuffer[0] != '$')   // assume that ESP programming commands are transmitted in individual packets     
+    { // sent command directly to PiKoder
+      for (int i=0; i< packetSize; i++) {
+        Serial.print(packetBuffer[i]);
+      }
+    } else {  // handle radio command
+      if (packetSize == 1) { // request fw version
+        Udp.beginPacket(remoteIp, remotPort);
+        Udp.write(FwVersion);
+        Udp.endPacket();     
+      } else {        
+        if (packetBuffer[1] == '?') { // transmit configuration in simplified format          
+          Udp.beginPacket(remoteIp, remotPort);
+          int i = 0;
+          while (settings.ssidap[i] != '\0') Udp.write(settings.ssidap[i++]);
+          Udp.write('\0');
+          i = 0;
+          while (settings.password[i] != '\0') Udp.write(settings.password[i++]);
+          Udp.write('\0');
+          Udp.endPacket();     
+        } 
+        if (packetBuffer[1] == 'S' || packetBuffer[1] == 's') {  // set SSID - string ending '\0'        
+          for (int i=3; i < packetSize; i++) {
+            settings.ssidap[i-3] = packetBuffer[i];
+          } 
+          saveConfig();
+        }
+        if (packetBuffer[1] == 'P' || packetBuffer[1] == 'p') {  // set password - string ending '\0'       
+          for (int i=3; i < packetSize; i++) {
+            settings.password[i-3] = packetBuffer[i];
+          }
+          saveConfig();
+        }
+      }
+    }
+  }
+     
   if (Serial.available() > 0) {
     char nChar = Serial.read();
     if (nChar == '$') {
+      
       while (!Serial.available()); // wait for next char
       nChar = Serial.read();
       if (nChar == '?') { // dump configuration
-        while ((nChar != 0xD && nChar != 0xA)) if (Serial.available() > 0) nChar = Serial.read(); 
+        while ((nChar != 0xD && nChar != 0xA)) if (Serial.available() > 0) nChar = Serial.read();  // read both (cr & lf) 
         while ((nChar != 0xD && nChar != 0xA)) if (Serial.available() > 0) nChar = Serial.read(); 
         Serial.println();
         Serial.print("Configuration dump ");
@@ -250,6 +296,9 @@ void loop() {
           Serial.println(" ... reset controller to apply new settings");
         }
       }          
+      if (nChar == 'R' || nChar == 'r') { // initiate reset
+        ESP.restart();
+      }
     } else {
       Udp.beginPacket(remoteIp, remotPort);
       Udp.write(nChar);
@@ -261,4 +310,3 @@ void loop() {
   }  
 }    
       
-
