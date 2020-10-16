@@ -6,17 +6,11 @@ The ESP8266-01 SoC Board is applied as transparent interface between WLAN and th
 In this setup the ESP8266 would establish an access point (ap) with the follwowing default settings: 
 SSID: "PiKoder_wRX", Password: "password". Your Android(TM) smart device's app "udpRC" (available at the
 google play store) would connect to this ap as a client.   
+
+Please refer to www.makerprojects.de and www.pikoder.de for more information.
 */ 
 
-/* 
-Last change:
-15.08.20: Implemented backwards-compatible FW version retrieval
-25.12.19: Implemented Commit and restarting of ESP to execute change in SSID and password 
-25.10.18: Implemented Baudrate setting and a few minor fixes; bumped version to 1.2.
-08.01.17: Changed status message to destinct between RX und TX firmware, translated comments
-26.12.16: Configuration data stored in EEProm, Commands for setting network parameters
-*/ 
-#define FwVersion "1.3"
+#define FwVersion "1.4"
 
 /* 
 Copyright 2017 - 2020 Gregor Schlechtriem
@@ -33,29 +27,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 */
-
-/* 
-This sketch requires Arduino IDE (Version > 1.6.8). The following settings are recommended:
-
-Add ESP board: 
-File -> Preferences -> Additional Boards Manager URLs:
-enter "http://arduino.esp8266.com/staging/package_esp8266com_index.json" 
-and then using:
-Tools -> Boards -> Boards Manager to install the esp8266
-
-Recommended board settings:
-Board: "Generic ESP8266 module"
-Flash Mode: "QIO"
-Flash Frequency: "40MHz"
-Upload Using: "Serial"
-CPU Frequency: "80MHz"
-Flash Size: "1M (64K SPIFFS)"
-Upload Speed "115200"
-Port: "COM40" (depends on your setup)
-Programmer: "Arduino Gemma"
-
-Please refer to www.makerprojects.de and www.pikoder.de for more information.
-*/ 
 
 #include <EEPROM.h>
 #include <ESP8266WiFi.h>
@@ -75,8 +46,7 @@ Please refer to www.makerprojects.de and www.pikoder.de for more information.
 
 boolean debug = false;
 
-struct StoreStruct {
-  // The variables of the settings
+struct StoreStruct { 
   char ssidap[32];
   int SettingsVersion; // consumes 4 Bytes
   char password[32];
@@ -174,16 +144,16 @@ void loop() {
       if (packetSize == 1) { // request fw version
         Udp.beginPacket(remoteIp, remotPort);
         Udp.write(FwVersion);
+        Udp.write("\r\n");
         Udp.endPacket();     
       } else {        
         if (packetBuffer[1] == '?') { // transmit configuration in simplified format          
           Udp.beginPacket(remoteIp, remotPort);
           int i = 0;
           while (settings.ssidap[i] != '\0') Udp.write(settings.ssidap[i++]);
-          Udp.write('\0');
           i = 0;
           while (settings.password[i] != '\0') Udp.write(settings.password[i++]);
-          Udp.write('\0');
+          Udp.write("\r\n");
           Udp.endPacket();     
         } 
         if (packetBuffer[1] == 'S' || packetBuffer[1] == 's') {  // set SSID - string ending '\0'        
@@ -205,7 +175,6 @@ void loop() {
   if (Serial.available() > 0) {
     char nChar = Serial.read();
     if (nChar == '$') {
-      
       while (!Serial.available()); // wait for next char
       nChar = Serial.read();
       if (nChar == '?') { // dump configuration
@@ -218,72 +187,92 @@ void loop() {
         } else {
           Serial.println("(applied default values)");         
         }
-        Serial.print("RX version: ");
-        Serial.println(FwVersion);
-        Serial.print("SSID: ");
-        Serial.println(settings.ssidap);
-        Serial.print("Password: ");     
-        Serial.println(settings.password);     
-        Serial.print("Baudrate: ");     
-        Serial.print(String(settings.baudrate,DEC));           
+        Serial.println("RX version: " + String(FwVersion));
+        Serial.println("SSID: " + String(settings.ssidap));
+        Serial.println("Password: " + String(settings.password));     
+        Serial.println("Baudrate: " + String(settings.baudrate,DEC));     
+        Serial.println();
       } 
+      
       if (nChar == 'S' || nChar == 's') { // set SSID
-        int i=0;       
-        while ((nChar != 0xD && nChar != 0xA)) {
-          if (Serial.available() > 0) {
-            nChar = Serial.read();
-            if ((!i) && (nChar == '=')) {
-            } else settings.ssidap[i++] = nChar;        
-          }
-        }    
-        settings.ssidap[--i] = '\0';
-        while ((nChar != 0xD && nChar != 0xA)) if (Serial.available() > 0) nChar = Serial.read(); 
-        Serial.println();
-        Serial.print("Setting SSID: ");
-        Serial.println();
-        Serial.print("New SSID: ");
-        Serial.print(settings.ssidap);           
-        saveConfig();
-        Serial.println(" ... reset controller to apply new settings");  
+        while (!Serial.available()); // wait for next char
+        nChar = Serial.read();
+        if (nChar == '=') {  
+          int i=0;       
+          while ((nChar != 0xD && nChar != 0xA)) {
+            if (Serial.available() > 0) {
+              nChar = Serial.read();
+              if ((!i) && (nChar == '=')) {
+              } else settings.ssidap[i++] = nChar;        
+            }
+          }    
+          settings.ssidap[--i] = '\0';
+          while ((nChar != 0xD && nChar != 0xA)) if (Serial.available() > 0) nChar = Serial.read(); 
+          Serial.println();
+          Serial.print("Setting SSID: ");
+          Serial.println();
+          Serial.print("New SSID: ");
+          Serial.print(settings.ssidap);           
+          saveConfig();
+          Serial.println(" ... reset controller to apply new settings");  
+        } else {
+          Serial.println("Incorrect format of SSID - please re-enter.");
+        }
+        while (Serial.available() > 0) nChar = Serial.read(); 
       }
+
       if (nChar == 'P' || nChar == 'p') { // set password
-        int i=0;       
-        while ((nChar != 0xD && nChar != 0xA)) {
-          if (Serial.available() > 0) {
-            nChar = Serial.read();
-            if ((!i) && (nChar == '=')) {
-            } else settings.password[i++] = nChar;        
-          }
-        }    
-        settings.password[--i] = '\0';
-        while ((nChar != 0xD && nChar != 0xA)) if (Serial.available() > 0) nChar = Serial.read(); 
-        Serial.println();
-        Serial.print("Setting Password: ");
-        Serial.println();
-        Serial.print("New Password: ");
-        Serial.print(settings.password);           
-        saveConfig();
-        Serial.println(" ... reset controller to apply new settings");  
+        while (!Serial.available()); // wait for next char
+        nChar = Serial.read();
+        if (nChar == '=') {  
+          int i=0;       
+          while ((nChar != 0xD && nChar != 0xA)) {
+            if (Serial.available() > 0) {
+              nChar = Serial.read();
+              if ((!i) && (nChar == '=')) {
+              } else settings.password[i++] = nChar;        
+            }
+          }    
+          settings.password[--i] = '\0';
+          while ((nChar != 0xD && nChar != 0xA)) if (Serial.available() > 0) nChar = Serial.read(); 
+          Serial.println();
+          Serial.print("Setting Password: ");
+          Serial.println();
+          Serial.print("New Password: ");
+          Serial.print(settings.password);           
+          saveConfig();
+          Serial.println(" ... reset controller to apply new settings");  
+        } else {
+          Serial.println("Incorrect format of password - please re-enter.");
+        }
+        while (Serial.available() > 0) nChar = Serial.read(); 
       }
+
       if (nChar == 'B' || nChar == 'b') { // set new baud rate
         int i=0;
         long newBaudrate = 0;       
-        while ((nChar != 0xD && nChar != 0xA)) {
-          if (Serial.available() > 0) {
-            nChar = Serial.read();
-            if ((!i) && (nChar == '=')) {
-            } else if (isDigit(nChar)) {
-              newBaudrate = newBaudrate * 10 + nChar - '0';        
-            } else if ((nChar != 0xD && nChar != 0xA)) {
-              Serial.println();
-              Serial.println();
-              Serial.println("Found non numerical input (" + String(nChar) + ") - please re-enter.");
-              newBaudrate = 0;
-              break;
-            }
+        while (!Serial.available()); // wait for next char
+        nChar = Serial.read();
+        if (nChar == '=') {  
+          while ((nChar != 0xD && nChar != 0xA)) {
+            if (Serial.available() > 0) {
+              nChar = Serial.read();
+              if ((!i) && (nChar == '=')) {
+              } else if (isDigit(nChar)) {
+                newBaudrate = newBaudrate * 10 + nChar - '0';        
+              } else if ((nChar != 0xD && nChar != 0xA)) {
+                Serial.println();
+                Serial.println();
+                Serial.println("Found non numerical input (" + String(nChar) + ") - please re-enter.");
+                newBaudrate = 0;
+                break;
+              }
+            }            
           }
-        }    
-        while ((nChar != 0xD && nChar != 0xA)) if (Serial.available() > 0) nChar = Serial.read(); 
+        } else {
+          Serial.println("Incorrect input format for baud rate - please re-enter.");
+        }             
+        while (Serial.available() > 0) nChar = Serial.read(); 
         if (newBaudrate > 0) {
           Serial.println();
           Serial.println();
@@ -295,10 +284,12 @@ void loop() {
           saveConfig();
           Serial.println(" ... reset controller to apply new settings");
         }
-      }          
+      }
+                
       if (nChar == 'R' || nChar == 'r') { // initiate reset
         ESP.restart();
       }
+      
     } else {
       Udp.beginPacket(remoteIp, remotPort);
       Udp.write(nChar);
